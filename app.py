@@ -14,10 +14,11 @@ st.set_page_config(
 st.title("📄 Parts Extractor — PDF → Excel")
 
 # ======================================================
-# HELPER: PDF VIEWER (SCROLLABLE, CHROME SAFE)
+# HELPER: PDF VIEWER (SCROLLABLE)
 # ======================================================
 
 import streamlit.components.v1 as components
+
 
 def pdf_viewer(file_bytes: bytes, height: int = 900):
     """Chrome-safe scrollable PDF viewer"""
@@ -35,6 +36,7 @@ def pdf_viewer(file_bytes: bytes, height: int = 900):
     """
 
     components.html(html, height=height + 20, scrolling=True)
+
 
 # ======================================================
 # FILE UPLOAD
@@ -78,17 +80,9 @@ if uploaded_file is not None:
 
         st.success("Extraction complete")
 
-        # Save debug path in session (IMPORTANT)
-        st.session_state["debug_pdf_path"] = debug_pdf
-        st.session_state["output_xlsx_path"] = output_xlsx
-
-    # ==================================================
-    # SHOW OUTPUT (PERSISTENT AFTER RERUN)
-    # ==================================================
-
-    if "output_xlsx_path" in st.session_state:
-
-        output_xlsx = st.session_state["output_xlsx_path"]
+        # ==============================================
+        # DOWNLOAD OUTPUT EXCEL
+        # ==============================================
 
         if output_xlsx and os.path.exists(output_xlsx):
             with open(output_xlsx, "rb") as f:
@@ -101,13 +95,9 @@ if uploaded_file is not None:
         else:
             st.error("Excel output not found")
 
-    # ==================================================
-    # DEBUG PDF VIEW (RIGHT COLUMN — SINGLE VIEWER)
-    # ==================================================
-
-    if "debug_pdf_path" in st.session_state:
-
-        debug_pdf = st.session_state["debug_pdf_path"]
+        # ==============================================
+        # DEBUG PDF VIEW (RIGHT COLUMN)
+        # ==============================================
 
         with right_col:
             st.subheader("🛠 Debug PDF Preview")
@@ -118,6 +108,7 @@ if uploaded_file is not None:
 
                 pdf_viewer(debug_bytes, height=900)
 
+                # Download debug file
                 st.download_button(
                     label="⬇ Download Debug PDF",
                     data=debug_bytes,
