@@ -23,22 +23,21 @@ st.title("📄 Parts Extractor — PDF → Excel")
 # ======================================================
 
 def pdf_viewer(file_bytes: bytes, height: int = 900):
-    """Safe scrollable PDF viewer (no Streamlit component errors)"""
+    """Ultra-reliable PDF viewer (works on Cloud + Chrome + Edge)"""
 
     b64 = base64.b64encode(file_bytes).decode("utf-8")
 
-    html = f"""
-    <div style="height:{height}px; overflow:auto; border:1px solid #ccc;">
-        <embed
-            src="data:application/pdf;base64,{b64}"
-            type="application/pdf"
-            width="100%"
-            height="100%"
-        />
-    </div>
+    pdf_display = f"""
+    <iframe
+        src="data:application/pdf;base64,{b64}"
+        width="100%"
+        height="{height}"
+        style="border:1px solid #ccc;"
+        type="application/pdf">
+    </iframe>
     """
 
-    components.html(html, height=height + 20, scrolling=True)
+    components.html(pdf_display, height=height + 20)
 
 # ======================================================
 # FILE UPLOAD
@@ -137,3 +136,4 @@ if uploaded_file is not None:
         os.unlink(pdf_path)
     except Exception:
         pass
+
