@@ -208,11 +208,27 @@ with left:
 # ======================================================
 
 with right:
-
     st.subheader("🔍 Debug PDF Viewer")
 
-    if "debug_pdf" in st.session_state:
-        pdf_viewer(st.session_state["debug_pdf"])
+    if "debug_pdf" in st.session_state and st.session_state["debug_pdf"]:
+
+        debug_path = st.session_state["debug_pdf"]
+
+        if os.path.exists(debug_path):
+            with open(debug_path, "rb") as f:
+                debug_bytes = f.read()
+
+            st.pdf(debug_bytes)
+
+            st.download_button(
+                "⬇ Download Debug PDF",
+                debug_bytes,
+                file_name=os.path.basename(debug_path),
+                mime="application/pdf"
+            )
+        else:
+            st.info("Debug file not found.")
     else:
-        st.info("Run extraction with debug enabled to view PDF")
+        st.info("Run extraction to view Debug PDF")
+
 
