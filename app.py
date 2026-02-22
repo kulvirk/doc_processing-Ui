@@ -191,6 +191,16 @@ with left:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+    if "debug_pdf" in st.session_state:
+
+        with open(st.session_state["debug_pdf"], "rb") as f:
+            st.download_button(
+                "⬇️ Download Debug Overlay PDF",
+                f,
+                file_name=os.path.basename(st.session_state["debug_pdf"]),
+                mime="application/pdf",
+                use_container_width=True
+            )
 
 
 # ======================================================
@@ -205,3 +215,4 @@ with right:
         pdf_viewer(st.session_state["debug_pdf"])
     else:
         st.info("Run extraction with debug enabled to view PDF")
+
