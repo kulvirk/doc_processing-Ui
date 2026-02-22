@@ -220,15 +220,11 @@ with right:
 
             st.pdf(debug_bytes)
 
-            st.download_button(
-                "⬇ Download Debug PDF",
-                debug_bytes,
-                file_name=os.path.basename(debug_path),
-                mime="application/pdf"
-            )
+        
         else:
             st.info("Debug file not found.")
     else:
         st.info("Run extraction to view Debug PDF")
+
 
 
