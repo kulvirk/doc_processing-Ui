@@ -187,4 +187,3 @@ if st.button("🚀 Run Extraction", use_container_width=True):
                     mime="application/pdf",
                     use_container_width=True
                 )
-
