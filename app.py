@@ -87,7 +87,7 @@ if uploaded_file is not None:
         st.subheader("Uploaded PDF")
 
         # ⭐ SAFE BUILT-IN VIEWER
-        st.pdf(pdf_bytes, key="uploaded_pdf")  #st.pdf(pdf_bytes)
+        st.pdf(pdf_bytes, key=f"viewer_main_{len(pdf_bytes)}") #st.pdf(pdf_bytes)
 
     with right:
         st.info("Use scroll / zoom controls inside viewer")
@@ -122,11 +122,12 @@ if "debug_pdf_path" in st.session_state:
     with open(st.session_state["debug_pdf_path"], "rb") as f:
         debug_bytes = f.read()
 
-    st.pdf(debug_bytes, key="debug_pdf") #st.pdf(debug_bytes)
+    st.pdf(debug_bytes, key=f"viewer_debug_{len(debug_bytes)}") #st.pdf(debug_bytes)
 
     st.download_button(
         "⬇ Download Debug PDF",
         debug_bytes,
         file_name="debug_output.pdf"
     )
+
 
