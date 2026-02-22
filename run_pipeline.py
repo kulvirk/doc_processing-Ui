@@ -1,6 +1,6 @@
 from collections import defaultdict, Counter
 from openpyxl import Workbook
-
+import re,os
 from multitable_inline.extract_mark_table import extract_mark_table
 from multitable_inline.extract_pmh_mos_table import extract_pmh_mos_table
 from multitable_inline.extract_balloon_bom_table import extract_balloon_bom_table
@@ -21,7 +21,236 @@ from multitable_inline.inline_pn_extractor import extract_inline_pns
 from multitable_inline.extract_alt_id_parts import extract_alt_id_parts
 from multitable_inline.patterns import PART_NO_REGEX
 from multitable_inline.title_extractor import (extract_page_title, extract_prev_page_title)
+from difflib import SequenceMatcher
 
+KNOWN_VENDORS = [
+    "INGERSOLL RAND",
+    "Marlow Pumps",
+    "DECKMA HAMBURG GmbH",
+    "Cameron",
+    "NEUHAUS",
+    "Expro",
+    "HANNON HYDRAULICS",
+    "WILO",
+    "VETCOGRAY",
+    "GE OIL & GAS",
+    "Dropsafe",
+    "PHAROS MARINE AUTOMATIC POWER",
+    "NOV",
+    "Survival Systems",
+    "BIRDDONG ASSOCIATES INC",
+    "Letourneau",
+    "FEDERAL SIGNAL",
+    "EMERSON",
+    "QUINCY",
+    "RAM WINCH HOIST",
+    "GE Oil and Gas",
+    "Bauer Kompressoren",
+    "Eaton",
+    "SOUTHERN AVIONICS COMPANY",
+    "LOADMASTER INDUSTRIES Broussard",
+    "NATIONAL OILWELL VARCO",
+    "LOADMASTER DERRICK",
+    "JOHNSON",
+    "ALSTOM",
+    "Conver team",
+    "IEC System",
+    "cameron",
+    "GENERAL MONITORS",
+    "peerless Pump",
+    "KIDDE FIRE SYSTEM",
+    "Dooley Tackaberry Systems",
+    "ALFA LAVAL TUMBA AB",
+    "Roper Pump Company",
+    "Dooley Tackaberry",
+    "ANSUL",
+    "LEWCO",
+    "DOUBLE LIFE",
+    "LTI TECHNOLOGIES",
+    "TOTCO",
+    "HARWIL",
+    "T3 ENERGY SERVICES",
+    "IMECO",
+    "NANCE INTERNATIONAL, INC.",
+    "CARRIER",
+    "EPIC",
+    "AXIOM",
+    "Derrick",
+    "CATERPILLAR.INC",
+    "RECOVERED ENERGY .INC",
+    "Federal Signal Corporation",
+    "AQUAFINEUV",
+    "SPECIFIC EQUIPMENT COMPANY1",
+    "Hadar Lighting",
+    "MURPHY",
+    "KODEN",
+    "JORTON",
+    "ALSTOM",
+    "Wools",
+    "DOOLEYTAKEBERRY Inc",
+    "ALFA LAVAL",
+    "BESLER ELECTRIC",
+    "PepperL",
+    "Signal International",
+    "Vertical",
+    "WILKERSON"
+]
+def normalize_text(text):
+    """Uppercase + remove punctuation + collapse spaces"""
+    text = text.upper()
+    text = re.sub(r"[^A-Z0-9\s]", " ", text)  # remove punctuation
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def fuzzy_contains(text, pattern, threshold=0.75):
+    """
+    Check if pattern approximately appears in text
+    using sliding window fuzzy match
+    """
+    words = text.split()
+    pat_words = pattern.split()
+    n = len(pat_words)
+
+    for i in range(len(words) - n + 1):
+        segment = " ".join(words[i:i + n])
+        score = SequenceMatcher(None, segment, pattern).ratio()
+        if score >= threshold:
+            return True
+
+    return False
+
+
+def detect_vendor_from_filename(pdf_path, pages_data, known_vendors):
+    """
+    Robust vendor detection:
+    - Extract from filename
+    - Validate using fuzzy match on first page
+    """
+
+    if not pages_data:
+        return None, None
+
+    # -----------------------------
+    # First page text (normalized)
+    # -----------------------------
+    first_page_text = pages_data[0].get("page_text", "")
+    first_page_text = normalize_text(first_page_text)
+
+    # -----------------------------
+    # Filename processing
+    # -----------------------------
+    filename = os.path.basename(pdf_path)
+    name = os.path.splitext(filename)[0]
+
+    clean_name = normalize_text(name)
+
+    vendor = None
+    model = None
+
+    # -----------------------------
+    # Match vendor from known list
+    # -----------------------------
+    for v in known_vendors:
+        v_norm = normalize_text(v)
+
+        if v_norm in clean_name:
+            vendor = v_norm
+            break
+
+    if not vendor:
+        return None, None
+
+    # -----------------------------
+    # Extract model (rest of name)
+    # -----------------------------
+    model_candidate = clean_name.replace(vendor, "").strip()
+    model = model_candidate if model_candidate else None
+
+    # -----------------------------
+    # VALIDATION (fuzzy)
+    # -----------------------------
+
+    # Vendor appears (even distorted)
+    if fuzzy_contains(first_page_text, vendor):
+        return vendor, model
+
+    # Model appears
+    if model and fuzzy_contains(first_page_text, model):
+        return vendor, model
+
+    return None, None
+
+def detect_vendor_from_text(pages_data, known_vendors):
+
+    if not pages_data:
+        return None
+
+    first_page_text = pages_data[0].get("page_text", "").upper()
+
+    for vendor in known_vendors:
+        if vendor in first_page_text:
+            return vendor
+
+    return None
+
+def detect_model_from_text(pages_data):
+
+    if not pages_data:
+        return None
+
+    text = pages_data[0].get("page_text", "")
+    if not text:
+        return None
+
+    keywords = [
+        "MODEL",
+        "SERIES",
+        "PROJECT",
+        "TYPE",
+        "CODE",
+        "P/N",
+        "PN",
+        "PART NO",
+        "MODEL NO"
+    ]
+
+    lines = text.splitlines()
+
+    for line in lines:
+        line_upper = line.strip().upper()
+
+        for kw in keywords:
+            if line_upper.startswith(kw):
+
+                # Remove keyword + optional ":" or "-"
+                value = re.sub(
+                    rf"^{kw}\s*[:\-]?\s*",
+                    "",
+                    line.strip(),
+                    flags=re.IGNORECASE
+                )
+
+                if value:
+                    return value.strip()
+
+    return None
+
+def detect_vendor(pdf_path, pages_data, known_vendors):
+
+    # 1️⃣ Try filename first
+    vendor, model = detect_vendor_from_filename(
+    pdf_path,
+    pages_data,
+    KNOWN_VENDORS
+)
+
+    if not vendor:
+        vendor = detect_vendor_from_text(pages_data, known_vendors)
+    if not model:
+        model=detect_model_from_text(pages_data)
+
+    return vendor,model
 def _first_pn_top(words, debug=False):
 
     tops = []
@@ -46,8 +275,27 @@ def _first_pn_top(words, debug=False):
 # ==================================================
 # EXPORT WITH SUMMARY (UNCHANGED)
 # ==================================================
-def export_with_summary(all_parts, pages_data, output_xlsx):
+def export_with_summary(all_parts,
+    pages_data,
+    output_xlsx,
+    vendor=None,
+    model=None,
+    project=None,
+    subproject=None,
+    equipment=None,
+    pdf_path=None):
+    
     wb = Workbook()
+    vendor = vendor or "N/A"
+    model = model or "N/A"
+    project = project or "N/A"
+    subproject = subproject or "N/A"
+    equipment = equipment or "N/A"
+
+    filename = "N/A"
+    if pdf_path:
+        import os
+        filename = os.path.basename(pdf_path)
 
     # -------------------------------
     # SHEET 1: PARTS
@@ -55,15 +303,31 @@ def export_with_summary(all_parts, pages_data, output_xlsx):
     ws_parts = wb.active
     ws_parts.title = "Parts"
 
-    ws_parts.append(["page", "title", "part_no", "description", "drawing_number"])
+    ws_parts.append([
+        "Vendor",
+        "Model",
+        "DESCRIPTION",
+        "Title_EQUIPMENT_PROJECT",
+        "Drawing",
+        "No Item-(Mnl)",
+        "pageno_FILENAME",
+        "project",
+        "Sub Project No-(Mnl)",
+        "Equipment Name-(Mnl)"
+    ])
 
     for p in all_parts:
         ws_parts.append([
-            p["page"],
-            p.get("title", ""),
-            p["part_no"],
+            vendor,
+            model,
             p["description"],
-            p.get("drawing_number", "")
+            p.get("title", ""),
+            p.get("drawing_number", ""),
+            p["part_no"],
+            f'{p["page"]}_{filename}',
+            project,
+            subproject,
+            equipment
         ])
 
     # -------------------------------
@@ -127,6 +391,11 @@ def export_with_summary(all_parts, pages_data, output_xlsx):
 def run(
     pdf_path,
     output_csv,
+    vendor=None,
+    model=None,
+    project=None,
+    subproject=None,
+    equipment=None,
     debug=False,
     pages=None
 ):
@@ -136,6 +405,10 @@ def run(
     # STEP 1 — Extract words from ALL pages
     # ----------------------------------------------
     pages_data = extract_table_candidates(pdf_path)
+    if not vendor:
+        vendor, b= detect_vendor(pdf_path, pages_data, KNOWN_VENDORS)
+    if not model:
+        a,model = detect_vendor(pdf_path, pages_data, KNOWN_VENDORS)
 
     if debug:
         print(f"[PIPELINE] Total pages scanned: {len(pages_data)}")
@@ -546,10 +819,16 @@ def run(
     output_xlsx = output_csv.replace(".csv", ".xlsx")
 
     export_with_summary(
-        all_parts=all_parts,
-        pages_data=pages_data,
-        output_xlsx=output_xlsx
-    )
+    all_parts=all_parts,
+    pages_data=pages_data,
+    output_xlsx=output_xlsx,
+    vendor=vendor,
+    model=model,
+    project=project,
+    subproject=subproject,
+    equipment=equipment,
+    pdf_path=pdf_path
+)
 
     # ----------------------------------------------
     # DEBUG OVERLAY PDF (UNCHANGED)
@@ -577,8 +856,8 @@ def run(
 # ==================================================
 if __name__ == "__main__":
     run(
-        pdf_path=r"C:\Users\Shank\Desktop\parts_extractor\test_manuals\combined.pdf",
-        output_csv=r"C:\Users\Shank\Desktop\parts_extractor\combined.csv",
+        pdf_path=r"C:\Users\Rajat\Downloads\4 Equ 108\BOP - Annular type\E108 Shaffer Bolted Cover Spherical BOP User Manual 2013-03-14.pdf",
+        output_csv=r"C:\Users\Rajat\Downloads\4 Equ 108\BOP - Annular type\E108 Shaffer Bolted Cover Spherical BOP User Manual 2013-03-14.csv",
         debug=True,
     )
  
