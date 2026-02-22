@@ -6,120 +6,202 @@ import base64
 from run_pipeline import run
 
 st.set_page_config(
-    page_title="Parts Extractor",
+    page_title="Parts",
     page_icon="📄",
     layout="wide"
 )
 
 st.title("📄 Parts Extractor — PDF → Excel")
 
+
 # ======================================================
-# HELPER: PDF VIEWER (SCROLLABLE)
+# PDF VIEWER (SCROLLABLE ONLY ON RIGHT)
 # ======================================================
 
-import streamlit.components.v1 as components
+def pdf_viewer(file_path):
+    with open(file_path, "rb") as f:
+        base64_pdf = base64.b64encode(f.read()).decode("utf-8")
 
-
-def pdf_viewer(file_bytes: bytes, height: int = 900):
-    """Chrome-safe scrollable PDF viewer"""
-    b64 = base64.b64encode(file_bytes).decode()
-
-    html = f"""
-    <div style="height:{height}px; overflow:auto; border:1px solid #ccc;">
-        <embed
-            src="data:application/pdf;base64,{b64}"
-            type="application/pdf"
+    pdf_display = f"""
+        <iframe
+            src="data:application/pdf;base64,{base64_pdf}"
             width="100%"
-            height="100%"
-        />
-    </div>
+            height="1100px"
+            style="border:none;"
+        ></iframe>
     """
-
-    components.html(html, height=height + 20, scrolling=True)
+    st.markdown(pdf_display, unsafe_allow_html=True)
 
 
 # ======================================================
-# FILE UPLOAD
+# TWO COLUMN LAYOUT
 # ======================================================
 
-uploaded_file = st.file_uploader(
-    "Upload PDF Manual",
-    type=["pdf"]
-)
+left, right = st.columns([1, 1])
 
-if uploaded_file is not None:
 
-    file_bytes = uploaded_file.read()
+# ======================================================
+# LEFT SIDE — FULL UI (NO SCROLL)
+# ======================================================
 
-    # Save to temp file for pipeline
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(file_bytes)
-        pdf_path = tmp.name
+with left:
 
-    st.success("PDF uploaded successfully")
+    uploaded_file = st.file_uploader(
+        "Upload PDF Manual",
+        type=["pdf"]
+    )
 
-    # ==================================================
-    # LAYOUT: TWO COLUMNS
-    # ==================================================
+    st.subheader("Project & Equipment Details")
 
-    left_col, right_col = st.columns(2)
+    col1, col2 = st.columns(2)
 
-    # ------------------ INPUT PDF VIEW -----------------
-    with left_col:
-        st.subheader("📥 Input PDF Preview")
-        pdf_viewer(file_bytes, height=900)
+    vendor = col1.text_input("Vendor")
+    model = col2.text_input("Model")
 
-    # ==================================================
-    # RUN EXTRACTION
-    # ==================================================
+    project = col1.text_input("Project")
+    subproject = col2.text_input("Sub Project")
 
-    if st.button("▶ Run Extraction"):
+    equipment = st.text_input("Equipment Name")
 
-        with st.spinner("Processing..."):
-            output_xlsx, debug_pdf = run(pdf_path=pdf_path)
+    vendor = vendor.strip() or None
+    model = model.strip() or None
+    project = project.strip() or None
+    subproject = subproject.strip() or None
+    equipment = equipment.strip() or None
 
-        st.success("Extraction complete")
+    # -------------------------
+    # PAGE SELECTION
+    # -------------------------
 
-        # ==============================================
-        # DOWNLOAD OUTPUT EXCEL
-        # ==============================================
+    st.subheader("Page Selection")
 
-        if output_xlsx and os.path.exists(output_xlsx):
-            with open(output_xlsx, "rb") as f:
-                st.download_button(
-                    label="⬇ Download Excel",
-                    data=f,
-                    file_name=os.path.basename(output_xlsx),
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+    mode = st.radio(
+        "Choose mode",
+        ["All pages", "Page range", "Specific pages"]
+    )
+
+    pages = None
+
+    if mode == "Page range":
+
+        c1, c2 = st.columns(2)
+
+        start_page = c1.number_input("Start Page", min_value=1, value=1)
+        end_page = c2.number_input("End Page", min_value=1, value=1)
+
+        if start_page <= end_page:
+            pages = list(range(start_page, end_page + 1))
         else:
-            st.error("Excel output not found")
+            st.error("Start page must be ≤ End page")
 
-        # ==============================================
-        # DEBUG PDF VIEW (RIGHT COLUMN)
-        # ==============================================
+    elif mode == "Specific pages":
 
-        with right_col:
-            st.subheader("🛠 Debug PDF Preview")
+        page_input = st.text_input(
+            "Enter pages (comma-separated)",
+            placeholder="e.g. 1,3,5,8"
+        )
 
-            if debug_pdf and os.path.exists(debug_pdf):
-                with open(debug_pdf, "rb") as f:
-                    debug_bytes = f.read()
+        if page_input:
+            try:
+                pages = sorted({
+                    int(p.strip())
+                    for p in page_input.split(",")
+                    if p.strip()
+                })
+            except:
+                st.error("Invalid page numbers")
 
-                pdf_viewer(debug_bytes, height=900)
+    # -------------------------
+    # OPTIONS
+    # -------------------------
 
-                # Download debug file
-                st.download_button(
-                    label="⬇ Download Debug PDF",
-                    data=debug_bytes,
-                    file_name=os.path.basename(debug_pdf),
-                    mime="application/pdf"
-                )
-            else:
-                st.info("No debug PDF generated.")
+    st.subheader("Options")
 
-    # Cleanup temp file when app reruns
-    try:
-        os.unlink(pdf_path)
-    except Exception:
-        pass
+    debug = st.checkbox(
+        "Generate debug overlay PDF",
+        value=False
+    )
+
+    # 🚀 RUN BUTTON
+    run_clicked = st.button(
+        "🚀 Run Extraction",
+        use_container_width=True
+    )
+
+
+# ======================================================
+# PROCESSING
+# ======================================================
+
+if run_clicked:
+
+    if not uploaded_file:
+        st.error("Please upload a PDF file")
+        st.stop()
+
+    temp_dir = tempfile.gettempdir()
+    pdf_path = os.path.join(temp_dir, uploaded_file.name)
+
+    with open(pdf_path, "wb") as f:
+        f.write(uploaded_file.read())
+
+    output_csv = pdf_path.replace(".pdf", ".csv")
+
+    progress = st.progress(0)
+    progress.progress(20)
+
+    with st.spinner("Processing document..."):
+
+        output_xlsx = run(
+            pdf_path=pdf_path,
+            output_csv=output_csv,
+            vendor=vendor,
+            model=model,
+            project=project,
+            subproject=subproject,
+            equipment=equipment,
+            debug=debug,
+            pages=pages
+        )
+
+    progress.progress(100)
+
+    st.success("Extraction completed!")
+
+    st.session_state["output_xlsx"] = output_xlsx
+
+    if debug:
+        debug_pdf = pdf_path.replace(".pdf", "_debug.pdf")
+        if os.path.exists(debug_pdf):
+            st.session_state["debug_pdf"] = debug_pdf
+
+
+# ======================================================
+# DOWNLOAD BUTTON (LEFT)
+# ======================================================
+
+with left:
+
+    if "output_xlsx" in st.session_state:
+        with open(st.session_state["output_xlsx"], "rb") as f:
+            st.download_button(
+                "⬇️ Download Excel Output",
+                f,
+                file_name=os.path.basename(st.session_state["output_xlsx"]),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+
+# ======================================================
+# RIGHT SIDE — SCROLLABLE PDF ONLY
+# ======================================================
+
+with right:
+
+    st.subheader("🔍 Debug PDF Viewer")
+
+    if "debug_pdf" in st.session_state:
+        pdf_viewer(st.session_state["debug_pdf"])
+    else:
+        st.info("Run extraction with debug enabled to view PDF")
