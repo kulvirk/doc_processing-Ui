@@ -215,16 +215,31 @@ with right:
         debug_path = st.session_state["debug_pdf"]
 
         if os.path.exists(debug_path):
-            with open(debug_path, "rb") as f:
-                debug_bytes = f.read()
 
-            st.pdf(debug_bytes)
+            debug_reader = PdfReader(debug_path)
+            debug_total = len(debug_reader.pages)
 
-        
+            debug_page = st.number_input(
+                "Debug page",
+                min_value=1,
+                max_value=debug_total,
+                value=1,
+                step=1,
+                key="debug_page"
+            )
+
+            st.caption(f"📄 Page: {debug_page} / {debug_total}")
+
+            writer = PdfWriter()
+            writer.add_page(debug_reader.pages[debug_page - 1])
+
+            buffer = BytesIO()
+            writer.write(buffer)
+            buffer.seek(0)
+
+            st.pdf(buffer.read())
+
         else:
             st.info("Debug file not found.")
     else:
         st.info("Run extraction to view Debug PDF")
-
-
-
