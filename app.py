@@ -185,24 +185,37 @@ with left:
 # ======================================================
 
 with right:
-
     st.subheader("🔍 Debug PDF Viewer")
 
-    if "debug_pdf" in st.session_state:
+    # ⭐ Make right panel taller
+    st.markdown(
+        """
+        <style>
+        .pdf-container {
+            height: 1400px;
+            overflow: auto;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-        debug_path = st.session_state["debug_pdf"]
+    with st.container():
 
-        if os.path.exists(debug_path):
+        if "debug_pdf" in st.session_state:
 
-            with open(debug_path, "rb") as f:
-                pdf_bytes = f.read()
+            debug_path = st.session_state["debug_pdf"]
 
-            # ⭐ Native Streamlit PDF Viewer
-            st.pdf(pdf_bytes)
+            if os.path.exists(debug_path):
+
+                with open(debug_path, "rb") as f:
+                    pdf_bytes = f.read()
+
+                # ⭐ Scrollable large viewer
+                st.pdf(pdf_bytes)
+
+            else:
+                st.info("Debug file not found.")
 
         else:
-            st.info("Debug file not found.")
-
-    else:
-        st.info("Run extraction to view Debug PDF")
-
+            st.info("Run extraction to view Debug PDF")
